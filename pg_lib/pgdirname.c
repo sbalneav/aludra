@@ -10,7 +10,7 @@
 PG_MODULE_MAGIC;
 #endif
 
-PG_FUNCTION_INFO_V1(pgdirname);
+PG_FUNCTION_INFO_V1 (pgdirname);
 
 Datum
 pgdirname (PG_FUNCTION_ARGS)
@@ -19,25 +19,25 @@ pgdirname (PG_FUNCTION_ARGS)
   text *path;
   text *result;
 
-  if (PG_ARGISNULL(0))
+  if (PG_ARGISNULL (0))
     {
-      PG_RETURN_NULL();
+      PG_RETURN_NULL ();
     }
 
-  path = PG_GETARG_TEXT_P(0);
-  dirc = (char *) palloc (VARSIZE(path) - VARHDRSZ + 1);
-  memcpy(dirc, VARDATA(path), VARSIZE(path) - VARHDRSZ);
-  *(dirc + VARSIZE(path) - VARHDRSZ) = '\0';
-  dname = dirname(dirc);
+  path = PG_GETARG_TEXT_P (0);
+  dirc = (char *) palloc (VARSIZE (path) - VARHDRSZ + 1);
+  memcpy (dirc, VARDATA (path), VARSIZE (path) - VARHDRSZ);
+  *(dirc + VARSIZE (path) - VARHDRSZ) = '\0';
+  dname = dirname (dirc);
 
-  result = (text *) palloc(VARHDRSZ + strlen(dname));
-  SET_VARSIZE(result, VARHDRSZ + strlen(dname));
-  memcpy(VARDATA(result), dname, strlen(dname));
+  result = (text *) palloc (VARHDRSZ + strlen (dname));
+  SET_VARSIZE (result, VARHDRSZ + strlen (dname));
+  memcpy (VARDATA (result), dname, strlen (dname));
 
-  PG_RETURN_TEXT_P(result);
+  PG_RETURN_TEXT_P (result);
 }
 
-PG_FUNCTION_INFO_V1(pgbasename);
+PG_FUNCTION_INFO_V1 (pgbasename);
 
 Datum
 pgbasename (PG_FUNCTION_ARGS)
@@ -46,20 +46,20 @@ pgbasename (PG_FUNCTION_ARGS)
   text *path;
   text *result;
 
-  if (PG_ARGISNULL(0))
+  if (PG_ARGISNULL (0))
     {
-      PG_RETURN_NULL();
+      PG_RETURN_NULL ();
     }
 
-  path = PG_GETARG_TEXT_P(0);
-  dirc = (char *) palloc (VARSIZE(path) - VARHDRSZ + 1);
-  memcpy(dirc, VARDATA(path), VARSIZE(path) - VARHDRSZ);
-  *(dirc + VARSIZE(path) - VARHDRSZ) = '\0';
-  dbase = basename(dirc);
+  path = PG_GETARG_TEXT_P (0);
+  dirc = (char *) palloc (VARSIZE (path) - VARHDRSZ + 1);
+  memcpy (dirc, VARDATA (path), VARSIZE (path) - VARHDRSZ);
+  *(dirc + VARSIZE (path) - VARHDRSZ) = '\0';
+  dbase = basename (dirc);
 
-  result = (text *) palloc(VARHDRSZ + strlen(dbase));
-  SET_VARSIZE(result, VARHDRSZ + strlen(dbase));
-  memcpy(VARDATA(result), dbase, strlen(dbase));
+  result = (text *) palloc (VARHDRSZ + strlen (dbase));
+  SET_VARSIZE (result, VARHDRSZ + strlen (dbase));
+  memcpy (VARDATA (result), dbase, strlen (dbase));
 
-  PG_RETURN_TEXT_P(result);
+  PG_RETURN_TEXT_P (result);
 }
