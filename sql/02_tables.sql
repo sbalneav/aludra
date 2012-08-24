@@ -28,7 +28,6 @@ CREATE TABLE inode
     path       TEXT,
     name       TEXT,
     st_dev     INTEGER,
-    st_ino     INTEGER,
     st_mode    INTEGER,
     st_nlink   INTEGER,
     st_uid     INTEGER,
