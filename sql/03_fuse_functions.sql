@@ -3,6 +3,7 @@
 -- operations of Aludra
 --
 
+DROP TYPE statbuf CASCADE;
 CREATE TYPE statbuf AS
   (
     st_dev     INTEGER,
@@ -18,7 +19,11 @@ CREATE TYPE statbuf AS
     st_atime   INTEGER,
     st_mtime   INTEGER,
     st_ctime   INTEGER
-  )
+  );
+
+--
+-- getattr
+--
 
 CREATE OR REPLACE FUNCTION getattr (abspath TEXT) RETURNS SETOF statbuf AS $$
 DECLARE
@@ -34,6 +39,18 @@ BEGIN
       FROM inode
       WHERE path = mypath AND name = myname;
 
-    RETURN ret
+    RETURN NEXT ret;
+END;
+$$ LANGUAGE plpgsql;
+
+--
+-- readdir
+--
+
+CREATE OR REPLACE FUNCTION readdir (abspath TEXT) RETURNS SETOF TEXT AS $$
+BEGIN
+    SELECT (name)
+      FROM inode
+      WHERE path = abspath;
 END;
 $$ LANGUAGE plpgsql;

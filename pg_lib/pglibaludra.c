@@ -5,6 +5,7 @@
 #include <postgres.h>
 #include <fmgr.h>
 #include <libgen.h>
+#include <time.h>
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -62,4 +63,14 @@ pgbasename (PG_FUNCTION_ARGS)
   memcpy (VARDATA (result), dbase, strlen (dbase));
 
   PG_RETURN_TEXT_P (result);
+}
+
+PG_FUNCTION_INFO_V1 (pgtime);
+Datum
+pgtime (PG_FUNCTION_ARGS)
+{
+  time_t now;
+
+  now = time(NULL);
+  PG_RETURN_INT32(now);
 }
