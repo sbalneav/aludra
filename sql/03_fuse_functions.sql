@@ -49,7 +49,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION readdir (abspath TEXT) RETURNS SETOF TEXT AS $$
 BEGIN
-    SELECT (name)
+    RETURN QUERY SELECT (name)
       FROM inode
       WHERE path = abspath;
 END;
