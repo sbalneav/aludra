@@ -51,6 +51,6 @@ CREATE OR REPLACE FUNCTION readdir (abspath TEXT) RETURNS SETOF TEXT AS $$
 BEGIN
     RETURN QUERY SELECT (name)
       FROM inode
-      WHERE path = abspath;
+      WHERE path = abspath AND NOT name = '/';
 END;
 $$ LANGUAGE plpgsql;
