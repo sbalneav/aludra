@@ -39,6 +39,7 @@ class AludraFS(fuse.Fuse):
         print path
         self.cursor.callproc('getattr', [path])
         result = self.cursor.fetchone()
+        print result
         if not result:
             return -errno.ENOENT
         st.st_mode   = result[2]
@@ -60,8 +61,10 @@ class AludraFS(fuse.Fuse):
             result = self.cursor.fetchmany()
             if not result:
                 break
-            dirents.append(result)
+            item = result[0]
+            dirents.append(item[0])
 
+        print dirents
         for r in dirents:
             yield fuse.Direntry(r)
 

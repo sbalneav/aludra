@@ -25,21 +25,18 @@ CREATE TYPE statbuf AS
 -- getattr
 --
 
-CREATE OR REPLACE FUNCTION getattr (abspath TEXT) RETURNS SETOF statbuf AS $$
+CREATE OR REPLACE FUNCTION getattr (abspath TEXT) RETURNS SETOF RECORD AS $$
 DECLARE
     mypath  TEXT;
     myname  TEXT;
-    ret     statbuf%ROWTYPE;
+--    ret     statbuf%ROWTYPE;
 BEGIN
     mypath  := dirname(abspath);
     myname  := basename(abspath);
 
     SELECT (st_dev, st_ino, st_mode, st_nlink, st_uid, st_gid, st_rdev, st_size, st_blksize, st_blocks, st_atime, st_mtime, st_ctime)
-      INTO ret
       FROM inode
       WHERE path = mypath AND name = myname;
-
-    RETURN NEXT ret;
 END;
 $$ LANGUAGE plpgsql;
 
