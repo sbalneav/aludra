@@ -42,16 +42,16 @@ class AludraFS(fuse.Fuse):
         print result
         if not result:
             return -errno.ENOENT
-        st.st_mode   = result[2]
-        st.st_ino    = result[1]
-        st.st_dev    = result[0]
-        st.st_nlink  = result[3]
-        st.st_uid    = result[4]
-        st.st_gid    = result[5]
-        st.st_size   = result[7]
-        st.st_atime  = result[10]
-        st.st_mtime  = result[11]
-        st.st_ctime  = result[12]
+        st.st_mode   = result[4]
+        st.st_ino    = result[0]
+        st.st_dev    = result[3]
+        st.st_nlink  = result[5]
+        st.st_uid    = result[6]
+        st.st_gid    = result[7]
+        st.st_size   = result[9]
+        st.st_atime  = result[12]
+        st.st_mtime  = result[13]
+        st.st_ctime  = result[14]
         return st
 
     def readdir(self, path, offset):
