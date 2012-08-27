@@ -31,8 +31,8 @@ DECLARE
     myname  TEXT;
     ret     statbuf%ROWTYPE;
 BEGIN
-    mypath  := dirname(path);
-    myname  := basename(path);
+    mypath  := dirname(abspath);
+    myname  := basename(abspath);
 
     SELECT (st_dev, st_ino, st_mode, st_nlink, st_uid, st_gid, st_rdev, st_size, st_blksize, st_blocks, st_atime, st_mtime, st_ctime)
       INTO ret

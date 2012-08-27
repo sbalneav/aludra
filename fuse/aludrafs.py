@@ -9,24 +9,59 @@ import dbutils
 
 fuse.fuse_python_api = (0, 2)
 
+class MyStat(fuse.Stat):
+    def __init__(self):
+        self.st_mode = 0
+        self.st_ino = 0
+        self.st_dev = 0
+        self.st_nlink = 0
+        self.st_uid = 0
+        self.st_gid = 0
+        self.st_size = 0
+        self.st_atime = 0
+        self.st_mtime = 0
+        self.st_ctime = 0
+
 class AludraFS(fuse.Fuse):
     def __init__(self, *args, **kw):
         fuse.Fuse.__init__(self, *args, **kw)
 
+        self.db = 'aludra'
+
         dbconnect = fsutils.readConfig(self.db)
+        print dbconnect
 
         self.conn = psycopg2.connect(dbconnect)
         self.cursor = self.conn.cursor()
 
     def getattr(self, path):
-        self.cursor.callproc('getattr', path)
+        st = MyStat
+        print path
+        self.cursor.callproc('getattr', [path])
         result = self.cursor.fetchone()
         if not result:
             return -errno.ENOENT
+        st.st_mode   = result[2]
+        st.st_ino    = result[1]
+        st.st_dev    = result[0]
+        st.st_nlink  = result[3]
+        st.st_uid    = result[4]
+        st.st_gid    = result[5]
+        st.st_size   = result[7]
+        st.st_atime  = result[10]
+        st.st_mtime  = result[11]
+        st.st_ctime  = result[12]
         return st
 
     def readdir(self, path, offset):
         dirents = [ '.', '..' ]
+        self.cursor.callproc('readdir', [path])
+        while True:
+            result = self.cursor.fetchmany()
+            if not result:
+                break
+            dirents.append(result)
+
         for r in dirents:
             yield fuse.Direntry(r)
 
@@ -81,7 +116,7 @@ def main():
     server.parser.add_option(mountopt="db", metavar="ALUDRA_DB", default='aludra',
                         help="Database to connect to in aludra.conf [default: %default]")
 
-    server.parse(errex=1)
+    server.parse(values=server, errex=1)
 
     # By default, allow others access
     server.fuse_args.add('allow_other')
