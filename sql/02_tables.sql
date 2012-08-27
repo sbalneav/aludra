@@ -1,5 +1,3 @@
-\c filesystem;
-
 --
 -- fileobj table
 --
