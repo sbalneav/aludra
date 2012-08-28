@@ -68,6 +68,14 @@ class AludraFS(fuse.Fuse):
         for r in dirents:
             yield fuse.Direntry(r)
 
+    def chmod(self, path, mode):
+        self.cursor.callproc('chmod', [path, mode])
+        return 0
+
+    def chown(self, path, uid, gid):
+        self.cursor.callproc('chown', [path, uid, gid])
+        return 0
+
     def mknod(self, path, mode, dev):
         return 0
 

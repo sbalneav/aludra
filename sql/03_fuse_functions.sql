@@ -59,3 +59,37 @@ BEGIN
       WHERE path = abspath AND NOT name = '/';
 END;
 $$ LANGUAGE plpgsql;
+
+--
+-- chmod
+--
+
+CREATE OR REPLACE FUNCTION chmod (abspath TEXT, mode_t INTEGER) AS $$
+DECLARE
+    mypath  TEXT;
+    myname  TEXT;
+BEGIN
+    mypath  := dirname(abspath);
+    myname  := basename(abspath);
+
+    UPDATE inode SET st_mode = mode_t
+      WHERE path = mypath AND name = myname;
+END;
+$$ LANGUAGE plpgsql;
+
+--
+-- chown
+--
+
+CREATE OR REPLACE FUNCTION chown (abspath TEXT, uid_t INTEGER, gid_t INTEGER) AS $$
+DECLARE
+    mypath  TEXT;
+    myname  TEXT;
+BEGIN
+    mypath  := dirname(abspath);
+    myname  := basename(abspath);
+
+    UPDATE inode SET st_uid = uid_t, st_gid = gid_t
+      WHERE path = mypath AND name = myname;
+END;
+$$ LANGUAGE plpgsql;
