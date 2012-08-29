@@ -64,16 +64,21 @@ $$ LANGUAGE plpgsql;
 -- chmod
 --
 
-CREATE OR REPLACE FUNCTION chmod (abspath TEXT, mode_t INTEGER) AS $$
+CREATE OR REPLACE FUNCTION chmod (abspath TEXT, mode_t INTEGER) RETURNS BOOLEAN AS $$
 DECLARE
-    mypath  TEXT;
-    myname  TEXT;
+    mypath   TEXT;
+    myname   TEXT;
+    rowcount INTEGER;
+    result   BOOLEAN;
 BEGIN
-    mypath  := dirname(abspath);
-    myname  := basename(abspath);
+    mypath := dirname(abspath);
+    myname := basename(abspath);
 
     UPDATE inode SET st_mode = mode_t
       WHERE path = mypath AND name = myname;
+    GET DIAGNOSTICS rowcount := ROW_COUNT;
+    SELECT (rowcount = 1) INTO RESULT;
+    RETURN RESULT;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -81,15 +86,20 @@ $$ LANGUAGE plpgsql;
 -- chown
 --
 
-CREATE OR REPLACE FUNCTION chown (abspath TEXT, uid_t INTEGER, gid_t INTEGER) AS $$
+CREATE OR REPLACE FUNCTION chown (abspath TEXT, uid_t INTEGER, gid_t INTEGER) RETURNS BOOLEAN AS $$
 DECLARE
-    mypath  TEXT;
-    myname  TEXT;
+    mypath   TEXT;
+    myname   TEXT;
+    rowcount INTEGER;
+    result   BOOLEAN;
 BEGIN
-    mypath  := dirname(abspath);
-    myname  := basename(abspath);
+    mypath := dirname(abspath);
+    myname := basename(abspath);
 
     UPDATE inode SET st_uid = uid_t, st_gid = gid_t
       WHERE path = mypath AND name = myname;
+    GET DIAGNOSTICS rowcount := ROW_COUNT;
+    SELECT (rowcount = 1) INTO RESULT;
+    RETURN RESULT;
 END;
 $$ LANGUAGE plpgsql;
