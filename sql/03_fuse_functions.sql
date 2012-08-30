@@ -137,7 +137,7 @@ DECLARE
     mypath   TEXT;
     myname   TEXT;
     rowcount INTEGER;
-    ENOENT   CONSTANT INTEGER := -2
+    ENOENT   CONSTANT INTEGER := -2;
 BEGIN
     mypath := dirname(abspath);
     myname := basename(abspath);
@@ -162,7 +162,7 @@ DECLARE
     mypath   TEXT;
     myname   TEXT;
     rowcount INTEGER;
-    ENOENT   CONSTANT INTEGER := -2
+    ENOENT   CONSTANT INTEGER := -2;
 BEGIN
     mypath := dirname(abspath);
     myname := basename(abspath);

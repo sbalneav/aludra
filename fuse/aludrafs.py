@@ -40,8 +40,6 @@ class AludraFS(fuse.Fuse):
         self.db = 'aludra'
 
         dbconnect = fsutils.readConfig(self.db)
-        print dbconnect
-
         self.conn = psycopg2.connect(dbconnect)
         self.cursor = self.conn.cursor()
 
