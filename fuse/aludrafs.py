@@ -9,18 +9,29 @@ import dbutils
 
 fuse.fuse_python_api = (0, 2)
 
+#
+# MyStat class:
+#
+# Extend fuse Stat class with initializer to populate structure from stat
+# tuple.
+#
+
 class MyStat(fuse.Stat):
-    def __init__(self):
-        self.st_mode = 0
-        self.st_ino = 0
-        self.st_dev = 0
-        self.st_nlink = 0
-        self.st_uid = 0
-        self.st_gid = 0
-        self.st_size = 0
-        self.st_atime = 0
-        self.st_mtime = 0
-        self.st_ctime = 0
+    def __init__(self, stattuple):
+        self.st_mode  = stattuple[0]
+        self.st_ino   = stattuple[1]
+        self.st_dev   = stattuple[2]
+        self.st_nlink = stattuple[3]
+        self.st_uid   = stattuple[4]
+        self.st_gid   = stattuple[5]
+        self.st_size  = stattuple[6]
+        self.st_atime = stattuple[7]
+        self.st_mtime = stattuple[8]
+        self.st_ctime = stattuple[9]
+
+#
+# Main AludraFS fuse class.
+#
 
 class AludraFS(fuse.Fuse):
     def __init__(self, *args, **kw):
@@ -35,46 +46,32 @@ class AludraFS(fuse.Fuse):
         self.cursor = self.conn.cursor()
 
     def getattr(self, path):
-        st = MyStat
-        print path
         self.cursor.callproc('getattr', [path])
-        result = self.cursor.fetchone()
-        print result
-        if not result:
+        for result in self.cursor:
+            pass
+        if not result or result[1] == None:
             return -errno.ENOENT
-        st.st_mode  = result[0]
-        st.st_ino   = result[1]
-        st.st_dev   = result[2]
-        st.st_nlink = result[3]
-        st.st_uid   = result[4]
-        st.st_gid   = result[5]
-        st.st_size  = result[6]
-        st.st_atime = result[7]
-        st.st_mtime = result[8]
-        st.st_ctime = result[9]
+        st = MyStat(result)
         return st
 
     def readdir(self, path, offset):
-        dirents = [ '.', '..' ]
         self.cursor.callproc('readdir', [path])
-        while True:
-            result = self.cursor.fetchmany()
-            if not result:
-                break
-            item = result[0]
-            dirents.append(item[0])
-
-        print dirents
-        for r in dirents:
-            yield fuse.Direntry(r)
+        yield fuse.Direntry('.')
+        yield fuse.Direntry('..')
+        for entry in self.cursor:
+            yield fuse.Direntry(entry[0])
 
     def chmod(self, path, mode):
         self.cursor.callproc('chmod', [path, mode])
-        return 0
+        for ret in self.cursor:
+            pass
+        return ret[0]
 
     def chown(self, path, uid, gid):
         self.cursor.callproc('chown', [path, uid, gid])
-        return 0
+        for ret in self.cursor:
+            pass
+        return ret[0]
 
     def mknod(self, path, mode, dev):
         return 0

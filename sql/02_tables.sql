@@ -25,6 +25,7 @@ CREATE TABLE inode
     st_ino     SERIAL,
     path       TEXT,
     name       TEXT,
+    deteted    BOOLEAN,
     st_dev     INTEGER,
     st_mode    INTEGER,
     st_nlink   INTEGER,
