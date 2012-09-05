@@ -177,3 +177,39 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql;
+
+--
+-- open
+--
+
+CREATE OR REPLACE FUNCTION open (abspath TEXT) RETURNS SETOF BYTEA AS $$
+DECLARE
+    mypath   TEXT;
+    myname   TEXT;
+BEGIN
+    mypath := dirname(abspath);
+    myname := basename(abspath);
+
+    RETURN QUERY SELECT (object)
+      FROM fileobj
+      WHERE fileobjid = (SELECT fileobjid FROM inode WHERE path = mypath AND name = myname AND deleted = FALSE);
+END;
+$$ LANGUAGE plpgsql;
+
+--
+-- release
+--
+
+CREATE OR REPLACE FUNCTION release (abspath TEXT, data BYTEA) RETURNS INTEGER AS $$
+DECLARE
+    mypath   TEXT;
+    myname   TEXT;
+BEGIN
+    mypath := dirname(abspath);
+    myname := basename(abspath);
+
+    UPDATE fileobj SET object = data
+      WHERE fileobjid = (SELECT fileobjid FROM inode WHERE path = mypath AND name = myname AND deleted = FALSE);
+    RETURN 0;
+END;
+$$ LANGUAGE plpgsql;

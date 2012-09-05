@@ -3,6 +3,7 @@
 import psycopg2
 import fuse
 import errno
+import tempfile
 
 import fsutils
 import dbutils
@@ -42,6 +43,7 @@ class AludraFS(fuse.Fuse):
         dbconnect = fsutils.readConfig(self.db)
         self.conn = psycopg2.connect(dbconnect)
         self.cursor = self.conn.cursor()
+        self.filecache = {}
 
     def getattr(self, path):
         self.cursor.callproc('getattr', [path])
@@ -77,16 +79,29 @@ class AludraFS(fuse.Fuse):
     def unlink(self, path):
         return 0
 
-    def read(self, path, size, offset):
+    def open(self, path, flags):
+        self.cursor.callproc('open', [path])
+        for data in self.cursor:
+            self.filecache[path] = tempfile.TemporaryFile()
+            self.filecache[path].write(data[0])
         return 0
 
+    def read(self, path, size, offset):
+        self.filecache[path].seek(offset)
+        return self.filecache[path].read(size)
+
     def write(self, path, buf, offset):
+        self.filecache[path].seek(offset)
+        self.filecache[path].write(buf)
+        return len(buf)
         return 0
 
     def release(self, path, flags):
-        return 0
-
-    def open(self, path, flags):
+        self.filecache[path].seek(0)
+        data = self.filecache[path].read()
+        self.filecache[path].close()
+        del self.filecache[path]
+        self.cursor.callproc('release', [path, data])
         return 0
 
     def truncate(self, path, size):
