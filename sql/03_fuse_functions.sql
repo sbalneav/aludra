@@ -179,6 +179,37 @@ END;
 $$ LANGUAGE plpgsql;
 
 --
+-- unlink
+--
+
+CREATE OR REPLACE FUNCTION unlink (abspath TEXT, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
+DECLARE
+    mypath   TEXT;
+    myname   TEXT;
+    myfileobjid INTEGER;
+    rowcount INTEGER;
+    ENOENT   CONSTANT INTEGER := -2;
+BEGIN
+    mypath := dirname(abspath);
+    myname := basename(abspath);
+
+    SELECT inode.fileobjid INTO myfileobjid
+      FROM inode
+      WHERE path = mypath AND name = myname AND deleted = FALSE;
+    GET DIAGNOSTICS rowcount := ROW_COUNT;
+    IF rowcount = 0 THEN
+        RETURN ENOENT;
+    END IF;
+
+    DELETE FROM inode
+      WHERE path = mypath AND name = myname AND deleted = FALSE;
+    DELETE FROM fileobj
+      WHERE fileobjid = myfileobjid;
+    RETURN 0;
+END;
+$$ LANGUAGE plpgsql;
+
+--
 -- mknod
 --
 

@@ -42,53 +42,72 @@ class AludraFS(fuse.Fuse):
 
         dbconnect = fsutils.readConfig(self.db)
         self.conn = psycopg2.connect(dbconnect)
-        self.cursor = self.conn.cursor()
         self.filecache = {}
 
     def getattr(self, path):
-        self.cursor.callproc('getattr', [path])
-        for result in self.cursor:
+        cursor = self.conn.cursor()
+        cursor.callproc('getattr', [path])
+        for result in cursor:
             pass
         if not result or result[1] == None:
             return -errno.ENOENT
         st = MyStat(result)
+        self.conn.commit()
         return st
 
     def readdir(self, path, offset):
-        self.cursor.callproc('readdir', [path])
+        cursor = self.conn.cursor()
+        cursor.callproc('readdir', [path])
         yield fuse.Direntry('.')
         yield fuse.Direntry('..')
-        for entry in self.cursor:
+        for entry in cursor:
             yield fuse.Direntry(entry[0])
+        self.conn.commit()
 
     def chmod(self, path, mode):
-        self.cursor.callproc('chmod', [path, mode])
-        for ret in self.cursor:
-            pass
-        return ret[0]
+        cursor = self.conn.cursor()
+        cursor.callproc('chmod', [path, mode])
+        for ret in cursor:
+            retval = ret[0]
+        self.conn.commit()
+        return retval
 
     def chown(self, path, uid, gid):
-        self.cursor.callproc('chown', [path, uid, gid])
-        for ret in self.cursor:
-            pass
-        return ret[0]
+        cursor = self.conn.cursor()
+        cursor.callproc('chown', [path, uid, gid])
+        for ret in cursor:
+            retval = ret[0]
+        self.conn.commit()
+        return retval
 
     def mknod(self, path, mode, dev):
+        cursor = self.conn.cursor()
         uid = self.GetContext()['uid']
         gid = self.GetContext()['gid']
-        self.cursor.callproc('mknod', [path, mode, dev, uid, gid])
-        for ret in self.cursor:
+        cursor.callproc('mknod', [path, mode, dev, uid, gid])
+        for ret in cursor:
             pass
+        self.conn.commit()
         return ret[0]
 
     def unlink(self, path):
-        return 0
+        cursor = self.conn.cursor()
+        uid = self.GetContext()['uid']
+        gid = self.GetContext()['gid']
+        cursor.callproc('unlink', [path, uid, gid])
+        for ret in cursor:
+            pass
+        self.conn.commit()
+        return ret[0]
 
     def open(self, path, flags):
-        self.cursor.callproc('open', [path])
-        for data in self.cursor:
+        cursor = self.conn.cursor()
+        cursor.callproc('open', [path])
+        for data in cursor:
             self.filecache[path] = tempfile.TemporaryFile()
-            self.filecache[path].write(data[0])
+            if data[0] is not None:
+                self.filecache[path].write(data[0])
+        self.conn.commit()
         return 0
 
     def read(self, path, size, offset):
@@ -99,14 +118,15 @@ class AludraFS(fuse.Fuse):
         self.filecache[path].seek(offset)
         self.filecache[path].write(buf)
         return len(buf)
-        return 0
 
     def release(self, path, flags):
+        cursor = self.conn.cursor()
         self.filecache[path].seek(0)
         data = self.filecache[path].read()
         self.filecache[path].close()
         del self.filecache[path]
-        self.cursor.callproc('release', [path, data])
+        cursor.callproc('release', [path, psycopg2.Binary(data)])
+        self.conn.commit()
         return 0
 
     def truncate(self, path, size):
