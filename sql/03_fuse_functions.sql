@@ -179,6 +179,45 @@ END;
 $$ LANGUAGE plpgsql;
 
 --
+-- create
+--
+
+CREATE OR REPLACE FUNCTION create (abspath TEXT, mode_t INTEGER) RETURNS SETOF BYTEA AS $$
+DECLARE
+    mypath   TEXT;
+    myname   TEXT;
+    S_IFREG  CONSTANT INTEGER := 32768;
+    mymode   INTEGER;
+    myinode  INTEGER;
+    myfileobjid  INTEGER;
+BEGIN
+    mypath := dirname(abspath);
+    myname := basename(abspath);
+    mymode := mode_t | S_IFREG;
+
+    INSERT INTO inode
+      (path,   name,   deleted, st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, st_size, st_blksize, st_blocks, st_atime, st_mtime, st_ctime)
+      VALUES
+      (mypath, myname, FALSE,   0,      mymode,  1,        uid_t,  gid_t,  0,       0,       0,          0,         unixtime(), unixtime(), unixtime());
+
+    SELECT currval(pg_get_serial_sequence('inode', 'st_ino')) INTO myinode;
+
+    INSERT INTO fileobj
+      (inode, version, priority, deleted, created, superceded, object)
+      VALUES
+      (myinode, 1, 1, FALSE, now(), NULL, NULL);
+
+    SELECT currval(pg_get_serial_sequence('fileobj', 'fileobjid')) INTO myfileobjid;
+
+    UPDATE inode SET fileobjid = myfileobjid
+      WHERE st_ino = myinode;
+
+    RETURN QUERY SELECT (object)
+      FROM fileobj
+      WHERE fileobjid = myfileobjid;
+END;
+$$ LANGUAGE plpgsql;
+--
 -- open
 --
 
@@ -204,12 +243,16 @@ CREATE OR REPLACE FUNCTION release (abspath TEXT, data BYTEA) RETURNS INTEGER AS
 DECLARE
     mypath   TEXT;
     myname   TEXT;
+    olength  INTEGER;
 BEGIN
     mypath := dirname(abspath);
     myname := basename(abspath);
 
+    olength := octet_length(data);
     UPDATE fileobj SET object = data
       WHERE fileobjid = (SELECT fileobjid FROM inode WHERE path = mypath AND name = myname AND deleted = FALSE);
+    UPDATE inode SET st_size = olength, st_atime = unixtime()
+      WHERE path = mypath AND name = myname AND deleted = FALSE;
     RETURN 0;
 END;
 $$ LANGUAGE plpgsql;
