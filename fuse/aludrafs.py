@@ -74,7 +74,12 @@ class AludraFS(fuse.Fuse):
         return ret[0]
 
     def mknod(self, path, mode, dev):
-        return 0
+        uid = self.GetContext()['uid']
+        gid = self.GetContext()['gid']
+        self.cursor.callproc('mknod', [path, mode, dev, uid, gid])
+        for ret in self.cursor:
+            pass
+        return ret[0]
 
     def unlink(self, path):
         return 0

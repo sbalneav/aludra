@@ -179,26 +179,24 @@ END;
 $$ LANGUAGE plpgsql;
 
 --
--- create
+-- mknod
 --
 
-CREATE OR REPLACE FUNCTION create (abspath TEXT, mode_t INTEGER) RETURNS SETOF BYTEA AS $$
+CREATE OR REPLACE FUNCTION mknod (abspath TEXT, mode_t INTEGER, dev_t INTEGER, uid_t INTEGER, gid_t INTEGER) RETURNS SETOF BYTEA AS $$
 DECLARE
     mypath   TEXT;
     myname   TEXT;
     S_IFREG  CONSTANT INTEGER := 32768;
-    mymode   INTEGER;
     myinode  INTEGER;
     myfileobjid  INTEGER;
 BEGIN
     mypath := dirname(abspath);
     myname := basename(abspath);
-    mymode := mode_t | S_IFREG;
 
     INSERT INTO inode
       (path,   name,   deleted, st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, st_size, st_blksize, st_blocks, st_atime, st_mtime, st_ctime)
       VALUES
-      (mypath, myname, FALSE,   0,      mymode,  1,        uid_t,  gid_t,  0,       0,       0,          0,         unixtime(), unixtime(), unixtime());
+      (mypath, myname, FALSE,   dev_t,  mode_t,  1,        uid_t,  gid_t,  0,       0,       0,          0,         unixtime(), unixtime(), unixtime());
 
     SELECT currval(pg_get_serial_sequence('inode', 'st_ino')) INTO myinode;
 
