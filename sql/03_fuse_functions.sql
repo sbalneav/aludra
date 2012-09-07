@@ -213,7 +213,7 @@ $$ LANGUAGE plpgsql;
 -- mknod
 --
 
-CREATE OR REPLACE FUNCTION mknod (abspath TEXT, mode_t INTEGER, dev_t INTEGER, uid_t INTEGER, gid_t INTEGER) RETURNS SETOF BYTEA AS $$
+CREATE OR REPLACE FUNCTION mknod (abspath TEXT, mode_t INTEGER, dev_t INTEGER, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
 DECLARE
     mypath   TEXT;
     myname   TEXT;
@@ -225,9 +225,9 @@ BEGIN
     myname := basename(abspath);
 
     INSERT INTO inode
-      (path,   name,   deleted, st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, st_size, st_blksize, st_blocks, st_atime, st_mtime, st_ctime)
+      (path,   name,   deleted, st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, st_size, st_atime, st_mtime, st_ctime)
       VALUES
-      (mypath, myname, FALSE,   dev_t,  mode_t,  1,        uid_t,  gid_t,  0,       0,       0,          0,         unixtime(), unixtime(), unixtime());
+      (mypath, myname, FALSE,   dev_t,  mode_t,  1,        uid_t,  gid_t,  0,       0,       unixtime(), unixtime(), unixtime());
 
     SELECT currval(pg_get_serial_sequence('inode', 'st_ino')) INTO myinode;
 
@@ -241,11 +241,34 @@ BEGIN
     UPDATE inode SET fileobjid = myfileobjid
       WHERE st_ino = myinode;
 
-    RETURN QUERY SELECT (object)
-      FROM fileobj
-      WHERE fileobjid = myfileobjid;
+    RETURN 0;
 END;
 $$ LANGUAGE plpgsql;
+
+--
+-- mkdir
+--
+
+CREATE OR REPLACE FUNCTION mkdir (abspath TEXT, mode_t INTEGER, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
+DECLARE
+    mypath   TEXT;
+    myname   TEXT;
+    S_IFDIR  CONSTANT INTEGER := 16384;
+    mymode   INTEGER;
+BEGIN
+    mypath := dirname(abspath);
+    myname := basename(abspath);
+    mymode := mode_t | S_IFDIR;
+
+    INSERT INTO inode
+      (path,   name,   deleted, st_dev, st_mode, st_nlink, st_uid, st_gid, st_size, st_atime, st_mtime, st_ctime)
+      VALUES
+      (mypath, myname, FALSE,   0,      mymode,  1,        uid_t,  gid_t,  4096,    unixtime(), unixtime(), unixtime());
+
+    RETURN 0;
+END;
+$$ LANGUAGE plpgsql;
+
 --
 -- open
 --

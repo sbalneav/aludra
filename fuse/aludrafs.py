@@ -136,6 +136,14 @@ class AludraFS(fuse.Fuse):
         return 0
 
     def mkdir(self, path, mode):
+        cursor = self.conn.cursor()
+        uid = self.GetContext()['uid']
+        gid = self.GetContext()['gid']
+        cursor.callproc('mkdir', [path, mode, uid, gid])
+        for ret in cursor:
+            pass
+        self.conn.commit()
+        return ret[0]
         return 0
 
     def rmdir(self, path):
