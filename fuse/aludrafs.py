@@ -26,9 +26,24 @@ class MyStat(fuse.Stat):
         self.st_uid   = stattuple[4]
         self.st_gid   = stattuple[5]
         self.st_size  = stattuple[6]
-        self.st_atime = stattuple[7]
-        self.st_mtime = stattuple[8]
-        self.st_ctime = stattuple[9]
+        self.st_rdev  = stattuple[7]
+        self.st_atime = stattuple[8]
+        self.st_mtime = stattuple[9]
+        self.st_ctime = stattuple[10]
+
+    def printit(self, header):
+        print("%s:" % header)
+        print("  st_mode  = %d" % self.st_mode)
+        print("  st_ino   = %d" % self.st_ino)
+        print("  st_dev   = %d" % self.st_dev)
+        print("  st_nlink = %d" % self.st_nlink)
+        print("  st_uid   = %d" % self.st_uid)
+        print("  st_gid   = %d" % self.st_gid)
+        print("  st_size  = %d" % self.st_size)
+        print("  st_atime = %d" % self.st_atime)
+        print("  st_mtime = %d" % self.st_mtime)
+        print("  st_ctime = %d" % self.st_ctime)
+        print
 
 #
 # Main AludraFS fuse class.
@@ -46,7 +61,7 @@ class AludraFS(fuse.Fuse):
 
     def getattr(self, path):
         cursor = self.conn.cursor()
-        cursor.callproc('getattr', [path])
+        cursor.callproc('fuse_getattr', [path])
         for result in cursor:
             pass
         if not result or result[1] == None:
@@ -57,7 +72,7 @@ class AludraFS(fuse.Fuse):
 
     def readdir(self, path, offset):
         cursor = self.conn.cursor()
-        cursor.callproc('readdir', [path])
+        cursor.callproc('fuse_readdir', [path])
         yield fuse.Direntry('.')
         yield fuse.Direntry('..')
         for entry in cursor:
@@ -66,25 +81,25 @@ class AludraFS(fuse.Fuse):
 
     def chmod(self, path, mode):
         cursor = self.conn.cursor()
-        cursor.callproc('chmod', [path, mode])
+        cursor.callproc('fuse_chmod', [path, mode])
         for ret in cursor:
-            retval = ret[0]
+            pass
         self.conn.commit()
-        return retval
+        return ret[0]
 
     def chown(self, path, uid, gid):
         cursor = self.conn.cursor()
-        cursor.callproc('chown', [path, uid, gid])
+        cursor.callproc('fuse_chown', [path, uid, gid])
         for ret in cursor:
-            retval = ret[0]
+            pass
         self.conn.commit()
-        return retval
+        return ret[0]
 
     def mknod(self, path, mode, dev):
         cursor = self.conn.cursor()
         uid = self.GetContext()['uid']
         gid = self.GetContext()['gid']
-        cursor.callproc('mknod', [path, mode, dev, uid, gid])
+        cursor.callproc('fuse_mknod', [path, mode, dev, uid, gid])
         for ret in cursor:
             pass
         self.conn.commit()
@@ -94,7 +109,7 @@ class AludraFS(fuse.Fuse):
         cursor = self.conn.cursor()
         uid = self.GetContext()['uid']
         gid = self.GetContext()['gid']
-        cursor.callproc('unlink', [path, uid, gid])
+        cursor.callproc('fuse_unlink', [path, uid, gid])
         for ret in cursor:
             pass
         self.conn.commit()
@@ -102,7 +117,7 @@ class AludraFS(fuse.Fuse):
 
     def open(self, path, flags):
         cursor = self.conn.cursor()
-        cursor.callproc('open', [path])
+        cursor.callproc('fuse_open', [path])
         for data in cursor:
             self.filecache[path] = tempfile.TemporaryFile()
             if data[0] is not None:
@@ -125,29 +140,43 @@ class AludraFS(fuse.Fuse):
         data = self.filecache[path].read()
         self.filecache[path].close()
         del self.filecache[path]
-        cursor.callproc('release', [path, psycopg2.Binary(data)])
+        cursor.callproc('fuse_release', [path, psycopg2.Binary(data)])
         self.conn.commit()
         return 0
 
     def truncate(self, path, size):
-        return 0
+        cursor = self.conn.cursor()
+        cursor.callproc('fuse_truncate', [path, size])
+        for ret in cursor:
+            pass
+        self.conn.commit()
+        return ret[0]
 
     def utime(self, path, times):
-        return 0
+        cursor = self.conn.cursor()
+        cursor.callproc('fuse_utime', [path, times[0], times[1]])
+        for ret in cursor:
+            pass
+        self.conn.commit()
+        return ret[0]
 
     def mkdir(self, path, mode):
         cursor = self.conn.cursor()
         uid = self.GetContext()['uid']
         gid = self.GetContext()['gid']
-        cursor.callproc('mkdir', [path, mode, uid, gid])
+        cursor.callproc('fuse_mkdir', [path, mode, uid, gid])
         for ret in cursor:
             pass
         self.conn.commit()
         return ret[0]
-        return 0
 
     def rmdir(self, path):
-        return 0
+        cursor = self.conn.cursor()
+        cursor.callproc('fuse_rmdir', [path])
+        for ret in cursor:
+            pass
+        self.conn.commit()
+        return ret[0]
 
     def rename(self, pathfrom, pathto):
         return 0

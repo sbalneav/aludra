@@ -42,6 +42,11 @@
 -- EPIPE   CONSTANT INTEGER := -32
 -- EDOM    CONSTANT INTEGER := -33
 -- ERANGE  CONSTANT INTEGER := -34
+-- EDEADLK CONSTANT INTEGER := -35
+-- ENAMETOOLONG	CONSTANT INTEGER := -36
+-- ENOLCK  CONSTANT INTEGER := -37
+-- ENOSYS  CONSTANT INTEGER := -38
+-- ENOTEMPTY CONSTANT INTEGER := -39
 
 --
 -- defines from stat.h
@@ -81,37 +86,62 @@ CREATE TYPE statbuf AS
     st_uid   INTEGER,
     st_gid   INTEGER,
     st_size  INTEGER,
+    st_rdev  INTEGER,
     st_atime INTEGER,
     st_mtime INTEGER,
     st_ctime INTEGER
   );
 
 --
--- getattr
+-- find_inode
 --
 
-CREATE OR REPLACE FUNCTION getattr (abspath TEXT) RETURNS statbuf AS $$
+CREATE OR REPLACE FUNCTION find_inode (abspath TEXT) RETURNS INTEGER AS $$
 DECLARE
     mypath  TEXT;
     myname  TEXT;
-    result  statbuf%ROWTYPE;
+    inode   INTEGER;
+    pinode  INTEGER;
 BEGIN
     mypath  := dirname(abspath);
     myname  := basename(abspath);
 
+    IF myname = '/' AND mypath = '/' THEN
+      SELECT INTO inode st_ino FROM tree WHERE name = '/' AND parent IS NULL;
+      RETURN inode;
+    ELSE
+      pinode := find_inode(mypath);
+      SELECT INTO inode st_ino FROM tree WHERE name = myname and parent = pinode;
+      RETURN inode;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+--
+-- getattr
+--
+
+CREATE OR REPLACE FUNCTION fuse_getattr (abspath TEXT) RETURNS statbuf AS $$
+DECLARE
+    myinode INTEGER;
+    result  statbuf%ROWTYPE;
+BEGIN
+    myinode := find_inode(abspath);
+
     SELECT INTO result
       inode.st_mode  AS st_mode,
       inode.st_ino   AS st_ino,
-      inode.st_dev   AS st_dev,
+      0              AS st_dev,
       inode.st_nlink AS st_nlink,
       inode.st_uid   AS st_uid,
       inode.st_gid   AS st_gid,
       inode.st_size  AS st_size,
+      inode.st_rdev  AS st_rdev,
       inode.st_atime AS st_atime,
       inode.st_mtime AS st_mtime,
       inode.st_ctime AS st_ctime
       FROM inode
-      WHERE path = mypath AND name = myname;
+      WHERE st_ino = myinode;
     RETURN result;
 END;
 $$ LANGUAGE plpgsql;
@@ -120,11 +150,15 @@ $$ LANGUAGE plpgsql;
 -- readdir
 --
 
-CREATE OR REPLACE FUNCTION readdir (abspath TEXT) RETURNS SETOF TEXT AS $$
+CREATE OR REPLACE FUNCTION fuse_readdir (abspath TEXT) RETURNS SETOF TEXT AS $$
+DECLARE
+    myinode INTEGER;
 BEGIN
-    RETURN QUERY SELECT (name)
-      FROM inode
-      WHERE path = abspath AND NOT name = '/' AND deleted = FALSE;
+    myinode := find_inode(abspath);
+
+    RETURN QUERY SELECT name
+      FROM tree
+      WHERE parent = myinode;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -132,24 +166,20 @@ $$ LANGUAGE plpgsql;
 -- chmod
 --
 
-CREATE OR REPLACE FUNCTION chmod (abspath TEXT, mode_t INTEGER) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION fuse_chmod (abspath TEXT, mode_t INTEGER) RETURNS INTEGER AS $$
 DECLARE
-    mypath   TEXT;
-    myname   TEXT;
-    rowcount INTEGER;
+    myinode  INTEGER;
     ENOENT   CONSTANT INTEGER := -2;
 BEGIN
-    mypath := dirname(abspath);
-    myname := basename(abspath);
+    myinode := find_inode(abspath);
+
+    IF myinode = NULL THEN
+        RETURN ENOENT;
+    END IF;
 
     UPDATE inode SET st_mode = mode_t
-      WHERE path = mypath AND name = myname AND deleted = FALSE;
-    GET DIAGNOSTICS rowcount := ROW_COUNT;
-    IF rowcount = 0 THEN
-        RETURN ENOENT;
-    ELSE
-        RETURN 0;
-    END IF;
+      WHERE st_ino = myinode;
+    RETURN 0;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -157,24 +187,20 @@ $$ LANGUAGE plpgsql;
 -- chown
 --
 
-CREATE OR REPLACE FUNCTION chown (abspath TEXT, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION fuse_chown (abspath TEXT, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
 DECLARE
-    mypath   TEXT;
-    myname   TEXT;
-    rowcount INTEGER;
+    myinode  INTEGER;
     ENOENT   CONSTANT INTEGER := -2;
 BEGIN
-    mypath := dirname(abspath);
-    myname := basename(abspath);
+    myinode := find_inode(abspath);
+
+    IF myinode = NULL THEN
+        RETURN ENOENT;
+    END IF;
 
     UPDATE inode SET st_uid = uid_t, st_gid = gid_t
-      WHERE path = mypath AND name = myname AND deleted = FALSE;
-    GET DIAGNOSTICS rowcount := ROW_COUNT;
-    IF rowcount = 0 THEN
-        RETURN ENOENT;
-    ELSE
-        RETURN 0;
-    END IF;
+      WHERE st_ino = myinode;
+    RETURN 0;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -182,29 +208,24 @@ $$ LANGUAGE plpgsql;
 -- unlink
 --
 
-CREATE OR REPLACE FUNCTION unlink (abspath TEXT, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION fuse_unlink (abspath TEXT, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
 DECLARE
-    mypath   TEXT;
-    myname   TEXT;
+    myinode  INTEGER;
     myfileobjid INTEGER;
-    rowcount INTEGER;
     ENOENT   CONSTANT INTEGER := -2;
 BEGIN
-    mypath := dirname(abspath);
-    myname := basename(abspath);
+    myinode := find_inode(abspath);
 
-    SELECT inode.fileobjid INTO myfileobjid
-      FROM inode
-      WHERE path = mypath AND name = myname AND deleted = FALSE;
-    GET DIAGNOSTICS rowcount := ROW_COUNT;
-    IF rowcount = 0 THEN
+    IF myinode = NULL THEN
         RETURN ENOENT;
     END IF;
 
     DELETE FROM inode
-      WHERE path = mypath AND name = myname AND deleted = FALSE;
+      WHERE st_ino = myinode;
     DELETE FROM fileobj
-      WHERE fileobjid = myfileobjid;
+      WHERE st_ino = myinode;
+    DELETE FROM tree
+      WHERE st_ino = myinode;
     RETURN 0;
 END;
 $$ LANGUAGE plpgsql;
@@ -213,28 +234,41 @@ $$ LANGUAGE plpgsql;
 -- mknod
 --
 
-CREATE OR REPLACE FUNCTION mknod (abspath TEXT, mode_t INTEGER, dev_t INTEGER, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION fuse_mknod (abspath TEXT, mode_t INTEGER, dev_t INTEGER, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
 DECLARE
-    mypath   TEXT;
-    myname   TEXT;
-    S_IFREG  CONSTANT INTEGER := 32768;
-    myinode  INTEGER;
-    myfileobjid  INTEGER;
+    myname      TEXT;
+    parentpath  TEXT;
+    S_IFREG     CONSTANT INTEGER := 32768;
+    ENOENT      CONSTANT INTEGER := -2;
+    myinode     INTEGER;
+    parentino   INTEGER;
+    myfileobjid INTEGER;
+    mymode      INTEGER;
 BEGIN
-    mypath := dirname(abspath);
-    myname := basename(abspath);
+    parentpath := dirname(abspath);
+    parentino  := find_inode(parentpath);
+    myname     := basename(abspath);
+
+    IF parentino = NULL then
+        RETURN ENOENT;
+    END IF;
+
+    mymode := mode_t | S_IFREG;
 
     INSERT INTO inode
-      (path,   name,   deleted, st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, st_size, st_atime, st_mtime, st_ctime)
+      (st_mode, st_nlink, st_uid, st_gid, st_size, st_rdev, st_atime,   st_mtime,   st_ctime)
       VALUES
-      (mypath, myname, FALSE,   dev_t,  mode_t,  1,        uid_t,  gid_t,  0,       0,       unixtime(), unixtime(), unixtime());
+      (mymode,  1,        uid_t,  gid_t,  0,       dev_t,   unixtime(), unixtime(), unixtime());
 
     SELECT currval(pg_get_serial_sequence('inode', 'st_ino')) INTO myinode;
 
+    INSERT INTO tree
+      VALUES (myinode, parentino, myname);
+
     INSERT INTO fileobj
-      (inode, version, priority, deleted, created, superceded, object)
+      (st_ino,  version, priority, deleted, created, superceded, object)
       VALUES
-      (myinode, 1, 1, FALSE, now(), NULL, NULL);
+      (myinode, 1,       1,        FALSE,   now(),   NULL,       NULL);
 
     SELECT currval(pg_get_serial_sequence('fileobj', 'fileobjid')) INTO myfileobjid;
 
@@ -249,21 +283,78 @@ $$ LANGUAGE plpgsql;
 -- mkdir
 --
 
-CREATE OR REPLACE FUNCTION mkdir (abspath TEXT, mode_t INTEGER, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION fuse_mkdir (abspath TEXT, mode_t INTEGER, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
 DECLARE
-    mypath   TEXT;
-    myname   TEXT;
+    myname      TEXT;
+    parentpath  TEXT;
     S_IFDIR  CONSTANT INTEGER := 16384;
-    mymode   INTEGER;
+    ENOENT      CONSTANT INTEGER := -2;
+    myinode     INTEGER;
+    parentino   INTEGER;
+    myfileobjid INTEGER;
+    mymode      INTEGER;
 BEGIN
-    mypath := dirname(abspath);
-    myname := basename(abspath);
+    parentpath := dirname(abspath);
+    parentino  := find_inode(parentpath);
+    myname     := basename(abspath);
+
+    IF parentino = NULL then
+        RETURN ENOENT;
+    END IF;
+
     mymode := mode_t | S_IFDIR;
 
     INSERT INTO inode
-      (path,   name,   deleted, st_dev, st_mode, st_nlink, st_uid, st_gid, st_size, st_atime, st_mtime, st_ctime)
+      (st_mode, st_nlink, st_uid, st_gid, st_size, st_rdev, st_atime,   st_mtime,   st_ctime)
       VALUES
-      (mypath, myname, FALSE,   0,      mymode,  1,        uid_t,  gid_t,  4096,    unixtime(), unixtime(), unixtime());
+      (mymode,  2,        uid_t,  gid_t,  4096,    0,       unixtime(), unixtime(), unixtime());
+
+    SELECT currval(pg_get_serial_sequence('inode', 'st_ino')) INTO myinode;
+
+    INSERT INTO tree
+      VALUES (myinode, parentino, myname);
+
+    UPDATE inode SET st_nlink = st_nlink + 1
+      WHERE st_ino = parentino;
+
+    RETURN 0;
+END;
+$$ LANGUAGE plpgsql;
+
+--
+-- rmdir
+--
+
+CREATE OR REPLACE FUNCTION fuse_rmdir (abspath TEXT) RETURNS INTEGER AS $$
+DECLARE
+    ENOENT    CONSTANT INTEGER := -2;
+    ENOTEMPTY CONSTANT INTEGER := -39;
+    myinode   INTEGER;
+    parentino INTEGER;
+    filecount INTEGER;
+BEGIN
+    parentino  := find_inode(dirname(abspath));
+    myinode    := find_inode(abspath);
+
+    IF myinode = NULL THEN
+        RETURN ENOENT;
+    END IF;
+
+    SELECT INTO filecount count(st_ino) FROM tree
+      WHERE parent = myinode;
+
+    IF filecount > 0 THEN
+        RETURN ENOTEMPTY;
+    END IF;
+
+    DELETE FROM inode
+      WHERE st_ino = myinode;
+
+    DELETE FROM tree
+      WHERE st_ino = myinode;
+
+    UPDATE inode SET st_nlink = st_nlink - 1
+      WHERE st_ino = parentino;
 
     RETURN 0;
 END;
@@ -273,17 +364,15 @@ $$ LANGUAGE plpgsql;
 -- open
 --
 
-CREATE OR REPLACE FUNCTION open (abspath TEXT) RETURNS SETOF BYTEA AS $$
+CREATE OR REPLACE FUNCTION fuse_open (abspath TEXT) RETURNS SETOF BYTEA AS $$
 DECLARE
-    mypath   TEXT;
-    myname   TEXT;
+    myinode INTEGER;
 BEGIN
-    mypath := dirname(abspath);
-    myname := basename(abspath);
+    myinode := find_inode(abspath);
 
-    RETURN QUERY SELECT (object)
+    RETURN QUERY SELECT object
       FROM fileobj
-      WHERE fileobjid = (SELECT fileobjid FROM inode WHERE path = mypath AND name = myname AND deleted = FALSE);
+      WHERE st_ino = myinode;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -291,20 +380,64 @@ $$ LANGUAGE plpgsql;
 -- release
 --
 
-CREATE OR REPLACE FUNCTION release (abspath TEXT, data BYTEA) RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION fuse_release (abspath TEXT, data BYTEA) RETURNS INTEGER AS $$
 DECLARE
-    mypath   TEXT;
-    myname   TEXT;
-    olength  INTEGER;
+    olength INTEGER;
+    myinode INTEGER;
 BEGIN
-    mypath := dirname(abspath);
-    myname := basename(abspath);
-
+    myinode := find_inode(abspath);
     olength := octet_length(data);
+
     UPDATE fileobj SET object = data
-      WHERE fileobjid = (SELECT fileobjid FROM inode WHERE path = mypath AND name = myname AND deleted = FALSE);
+      WHERE st_ino = myinode;
     UPDATE inode SET st_size = olength, st_atime = unixtime()
-      WHERE path = mypath AND name = myname AND deleted = FALSE;
+      WHERE st_ino = myinode;
+    RETURN 0;
+END;
+$$ LANGUAGE plpgsql;
+
+--
+-- truncate
+--
+
+CREATE OR REPLACE FUNCTION fuse_truncate (abspath TEXT, size_t INTEGER) RETURNS INTEGER AS $$
+DECLARE
+    myinode  INTEGER;
+    trimmed  BYTEA;
+    ENOENT   CONSTANT INTEGER := -2;
+BEGIN
+    myinode := find_inode(abspath);
+
+    IF myinode = NULL THEN
+        RETURN ENOENT;
+    END IF;
+
+    UPDATE fileobj SET object = substring(object from 1 for size_t)
+      where st_ino = myinode;
+    UPDATE inode SET st_size = size_t, st_mtime = unixtime(), st_ctime = unixtime()
+      WHERE st_ino = myinode;
+    RETURN 0;
+END;
+$$ LANGUAGE plpgsql;
+
+--
+-- utime
+--
+
+CREATE OR REPLACE FUNCTION fuse_utime (abspath TEXT, atime INTEGER, mtime INTEGER) RETURNS INTEGER AS $$
+DECLARE
+    myinode  INTEGER;
+    trimmed  BYTEA;
+    ENOENT   CONSTANT INTEGER := -2;
+BEGIN
+    myinode := find_inode(abspath);
+
+    IF myinode = NULL THEN
+        RETURN ENOENT;
+    END IF;
+
+    UPDATE inode SET st_atime = atime, st_mtime = mtime
+      where st_ino = myinode;
     RETURN 0;
 END;
 $$ LANGUAGE plpgsql;
