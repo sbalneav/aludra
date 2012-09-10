@@ -7,7 +7,8 @@ CREATE TABLE tree
   (
     st_ino     INTEGER,
     parent     INTEGER,
-    name       TEXT
+    name       TEXT,
+    fullpath   TEXT
   );
 
 --

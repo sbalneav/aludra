@@ -118,6 +118,19 @@ END;
 $$ LANGUAGE plpgsql;
 
 --
+-- find_inode_direct
+--
+
+CREATE OR REPLACE FUNCTION find_inode_direct (abspath TEXT) RETURNS INTEGER AS $$
+DECLARE
+    inode   INTEGER;
+BEGIN
+    SELECT INTO inode st_ino FROM tree WHERE fullpath = abspath;
+    RETURN inode;
+END;
+$$ LANGUAGE plpgsql;
+
+--
 -- getattr
 --
 
@@ -126,7 +139,7 @@ DECLARE
     myinode INTEGER;
     result  statbuf%ROWTYPE;
 BEGIN
-    myinode := find_inode(abspath);
+    myinode := find_inode_direct(abspath);
 
     SELECT INTO result
       inode.st_mode  AS st_mode,
@@ -154,7 +167,7 @@ CREATE OR REPLACE FUNCTION fuse_readdir (abspath TEXT) RETURNS SETOF TEXT AS $$
 DECLARE
     myinode INTEGER;
 BEGIN
-    myinode := find_inode(abspath);
+    myinode := find_inode_direct(abspath);
 
     RETURN QUERY SELECT name
       FROM tree
@@ -171,7 +184,7 @@ DECLARE
     myinode  INTEGER;
     ENOENT   CONSTANT INTEGER := -2;
 BEGIN
-    myinode := find_inode(abspath);
+    myinode := find_inode_direct(abspath);
 
     IF myinode = NULL THEN
         RETURN ENOENT;
@@ -192,7 +205,7 @@ DECLARE
     myinode  INTEGER;
     ENOENT   CONSTANT INTEGER := -2;
 BEGIN
-    myinode := find_inode(abspath);
+    myinode := find_inode_direct(abspath);
 
     IF myinode = NULL THEN
         RETURN ENOENT;
@@ -214,7 +227,7 @@ DECLARE
     myfileobjid INTEGER;
     ENOENT   CONSTANT INTEGER := -2;
 BEGIN
-    myinode := find_inode(abspath);
+    myinode := find_inode_direct(abspath);
 
     IF myinode = NULL THEN
         RETURN ENOENT;
@@ -237,7 +250,6 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION fuse_mknod (abspath TEXT, mode_t INTEGER, dev_t INTEGER, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
 DECLARE
     myname      TEXT;
-    parentpath  TEXT;
     S_IFREG     CONSTANT INTEGER := 32768;
     ENOENT      CONSTANT INTEGER := -2;
     myinode     INTEGER;
@@ -245,8 +257,7 @@ DECLARE
     myfileobjid INTEGER;
     mymode      INTEGER;
 BEGIN
-    parentpath := dirname(abspath);
-    parentino  := find_inode(parentpath);
+    parentino  := find_inode_direct(dirname(abspath));
     myname     := basename(abspath);
 
     IF parentino = NULL then
@@ -263,7 +274,8 @@ BEGIN
     SELECT currval(pg_get_serial_sequence('inode', 'st_ino')) INTO myinode;
 
     INSERT INTO tree
-      VALUES (myinode, parentino, myname);
+      (st_ino, parent, name, fullpath)
+      VALUES (myinode, parentino, myname, abspath);
 
     INSERT INTO fileobj
       (st_ino,  version, priority, deleted, created, superceded, object)
@@ -286,16 +298,14 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION fuse_mkdir (abspath TEXT, mode_t INTEGER, uid_t INTEGER, gid_t INTEGER) RETURNS INTEGER AS $$
 DECLARE
     myname      TEXT;
-    parentpath  TEXT;
-    S_IFDIR  CONSTANT INTEGER := 16384;
+    S_IFDIR     CONSTANT INTEGER := 16384;
     ENOENT      CONSTANT INTEGER := -2;
     myinode     INTEGER;
     parentino   INTEGER;
     myfileobjid INTEGER;
     mymode      INTEGER;
 BEGIN
-    parentpath := dirname(abspath);
-    parentino  := find_inode(parentpath);
+    parentino  := find_inode_direct(dirname(abspath));
     myname     := basename(abspath);
 
     IF parentino = NULL then
@@ -312,7 +322,8 @@ BEGIN
     SELECT currval(pg_get_serial_sequence('inode', 'st_ino')) INTO myinode;
 
     INSERT INTO tree
-      VALUES (myinode, parentino, myname);
+      (st_ino, parent, name, fullpath)
+      VALUES (myinode, parentino, myname, abspath);
 
     UPDATE inode SET st_nlink = st_nlink + 1
       WHERE st_ino = parentino;
@@ -333,8 +344,8 @@ DECLARE
     parentino INTEGER;
     filecount INTEGER;
 BEGIN
-    parentino  := find_inode(dirname(abspath));
-    myinode    := find_inode(abspath);
+    parentino  := find_inode_direct(dirname(abspath));
+    myinode    := find_inode_direct(abspath);
 
     IF myinode = NULL THEN
         RETURN ENOENT;
@@ -368,7 +379,7 @@ CREATE OR REPLACE FUNCTION fuse_open (abspath TEXT) RETURNS SETOF BYTEA AS $$
 DECLARE
     myinode INTEGER;
 BEGIN
-    myinode := find_inode(abspath);
+    myinode := find_inode_direct(abspath);
 
     RETURN QUERY SELECT object
       FROM fileobj
@@ -385,7 +396,7 @@ DECLARE
     olength INTEGER;
     myinode INTEGER;
 BEGIN
-    myinode := find_inode(abspath);
+    myinode := find_inode_direct(abspath);
     olength := octet_length(data);
 
     UPDATE fileobj SET object = data
@@ -406,7 +417,7 @@ DECLARE
     trimmed  BYTEA;
     ENOENT   CONSTANT INTEGER := -2;
 BEGIN
-    myinode := find_inode(abspath);
+    myinode := find_inode_direct(abspath);
 
     IF myinode = NULL THEN
         RETURN ENOENT;
@@ -430,7 +441,7 @@ DECLARE
     trimmed  BYTEA;
     ENOENT   CONSTANT INTEGER := -2;
 BEGIN
-    myinode := find_inode(abspath);
+    myinode := find_inode_direct(abspath);
 
     IF myinode = NULL THEN
         RETURN ENOENT;
